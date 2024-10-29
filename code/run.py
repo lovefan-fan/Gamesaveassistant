@@ -137,32 +137,71 @@ def updateadd_config_value(key, value, file_path="data/config.json"):
     # 写回文件
     with open(file_path, 'w', encoding='utf-8') as file:
         json.dump(config, file, indent=4, ensure_ascii=False)
-
-# 监控游戏进程
-def monitor_process(process_name):
+# 删除键
+def delete_key_from_json(key,file_path="data/config.json"):
     """
-    监控指定名称的进程，当进程结束时退出方法。
+    从指定的 JSON 文件中删除指定的键。
+
+    :param file_path: JSON 文件的路径
+    :param key: 要删除的键
+    :return: 删除成功则返回 True；若键不存在则返回 False
+    """
+    if not os.path.exists(file_path):
+        print(f"文件 '{file_path}' 不存在。")
+        return False
+
+    # 读取 JSON 文件
+    with open(file_path, 'r', encoding='utf-8') as file:
+        data = json.load(file)
+
+    # 检查并删除键
+    if key in data:
+        data.pop(key)
+        # 写回 JSON 文件
+        with open(file_path, 'w', encoding='utf-8') as file:
+            json.dump(data, file, indent=4, ensure_ascii=False)
+        print(f"已成功删除键 '{key}'。")
+        return True
+    else:
+        print(f"键 '{key}' 不存在于文件中。")
+        return False
+
+# 判断式监控
+def monitor_process_if(process_name):
+    """
+    首次检测到指定名称的进程后，进行 5 秒检测。
+    如果 5 秒后进程不再存在，则退出监控。
 
     :param process_name: 进程的名称
     """
-    print(f"开始监控进程: {process_name}")
-    process_running = False
+    # print(f"开始监控进程: {process_name}")
 
-    # 循环检查进程是否在运行
+    # 检查是否能首次检测到进程
     while True:
-        time.sleep(1)  # 每秒检查一次
-        # 查找所有匹配的进程
-        process_running = False
+        process_found = False
         for process in psutil.process_iter(['name']):
             if process.info['name'] == process_name:
-                process_running = True
+                process_found = True
                 break
 
-        if not process_running:
-            print(f"进程 {process_name} 已结束，退出监控。")
-            break
+        # 若首次检测到进程，则等待 5 秒再重新确认
+        if process_found:
+            pass
+            # print(f"检测到进程 {process_name}，开始 5 秒监控...")
+            time.sleep(5)
 
-        # monitor_process("你的进程名称.exe")
+            # 5 秒后再次确认进程是否还在运行
+            process_running = False
+            for process in psutil.process_iter(['name']):
+                if process.info['name'] == process_name:
+                    process_running = True
+                    break
+
+            if not process_running:
+                # print(f"进程 {process_name} 已结束，退出监控。")
+                break
+        else:
+            time.sleep(1)  # 如果未检测到进程，每秒检查一次
 # 列出当前游戏进程
 def list_visible_app_processes():
     """
@@ -200,8 +239,32 @@ def select_directory(title):
     else:
         messagebox.showerror('错误','没有选择目录')
         sys.exit(1)  # 终止程序运行并返回状态码1
+# 选择zip文件
+def select_zip_file(title):
+    """
+    打开一个文件选择对话框，让用户选择一个 ZIP 文件。
 
-# 选择监控的游戏
+    :param title: 对话框的标题
+    :return: 用户选择的 ZIP 文件路径
+    """
+    # 创建根窗口，但不显示它
+    root = tk.Tk()
+    root.withdraw()  # 隐藏根窗口
+
+    # 打开文件选择对话框，并限制只选择 ZIP 文件
+    selected_file = filedialog.askopenfilename(
+        title=title,
+        filetypes=[("ZIP 文件", "*.zip")]
+    )
+
+    # 返回选中的文件或显示错误消息并退出程序
+    if selected_file:
+        return selected_file
+    else:
+        messagebox.showerror('错误', '没有选择 ZIP 文件')
+        sys.exit(1)  # 终止程序运行并返回状态码 1
+
+# 选择操作的游戏
 def show_keys_from_config(config, callback):
     """
     创建一个顶层窗口来展示字典中的所有键，用户选中后返回该键
@@ -216,7 +279,7 @@ def show_keys_from_config(config, callback):
 
     # 创建顶层窗口
     key_window = tk.Toplevel()
-    key_window.title("选择需要监控的游戏")
+    key_window.title("选择操作的游戏")
 
     # 创建列表框并添加字典中的键
     listbox = Listbox(key_window, width=50, height=15)
@@ -233,7 +296,6 @@ def show_keys_from_config(config, callback):
     key_window.transient(mainmenu)  # 设置为根窗口的临时窗口
     key_window.grab_set()  # 使窗口成为模态窗口
 
-
 #---运行方法库---
 # 添加游戏监控
 def Addgame():
@@ -244,20 +306,21 @@ def Addgame():
     process = tk.StringVar()
     notes = tk.StringVar()
     Archivedirectory = tk.StringVar()
+    appid = tk.StringVar()
 
     # 设置游戏存档目录
     def run():
-        game_path = select_directory("选择游戏根目录")
+        game_path = select_directory("选择游戏存档目录")
         Archivedirectory.set(game_path)
 
     # 添加
     def run2():
-        update_config_value(notes.get(),[process.get(),Archivedirectory.get()])
+        update_config_value(notes.get(), [process.get(), Archivedirectory.get(),appid.get()])
         messagebox.showinfo('成功','添加成功')
     # 运行查看所有进程
     def Viewallprocesses():
-        # subprocess.Popen(["查看所有进程.exe"])
-        subprocess.Popen(['python',"process.py"])
+        subprocess.Popen(["查看所有进程.exe"])
+        # subprocess.Popen(['python',"process.py"])
 
     # 主菜单
     tk.Label(Addgamewindow, text='输入游戏进程：', font=('微软雅黑', 12)).grid(row=1, column=1)
@@ -271,17 +334,72 @@ def Addgame():
     tk.Entry(Addgamewindow, width=70, font=('微软雅黑', 12), textvariable=Archivedirectory).grid(row=3, column=2)
     ttk.Button(Addgamewindow, text='更改目录', command=run, padding=(5, 5)).grid(row=3, column=3)
 
-    ttk.Button(Addgamewindow, text='确认添加', command=run2, padding=(10, 5)).grid(row=4, column=1)
+    tk.Label(Addgamewindow, text='输入游戏APPID(可选，不输入则无法进入流程模式)：', font=('微软雅黑', 12)).grid(row=4, column=1)
+    tk.Entry(Addgamewindow, width=10, font=('微软雅黑', 12), textvariable=appid).grid(row=4, column=2)
+
+    ttk.Button(Addgamewindow, text='确认添加', command=run2, padding=(10, 5)).grid(row=5, column=1)
+
+# 修改游戏监控
+def modifygame():
+    config = load_config()
+    def handle_selected_key(selected_key):
+        modifygamewindow = tk.Toplevel()
+        modifygamewindow.title('添加游戏监控')
+
+        # 初始化环境变量
+        process = tk.StringVar()
+        process.set(config[selected_key][0])
+        notes = tk.StringVar()
+        notes.set(selected_key)
+        Archivedirectory = tk.StringVar()
+        Archivedirectory.set(config[selected_key][1])
+        appid = tk.StringVar()
+        appid.set(config[selected_key][2])
+
+        # 设置游戏存档目录
+        def run():
+            game_path = select_directory("选择游戏存档目录")
+            Archivedirectory.set(game_path)
+
+        # 添加
+        def run2():
+            update_config_value(notes.get(), [process.get(), Archivedirectory.get(), appid.get()])
+            if selected_key != notes.get():
+                delete_key_from_json(selected_key)
+            messagebox.showinfo('成功', '修改成功')
+
+        # 运行查看所有进程
+        def Viewallprocesses():
+            subprocess.Popen(["查看所有进程.exe"])
+            # subprocess.Popen(['python', "process.py"])
+
+        # 主菜单
+        tk.Label(modifygamewindow, text='输入游戏进程：', font=('微软雅黑', 12)).grid(row=1, column=1)
+        ttk.Button(modifygamewindow, text='运行查看所有进程', command=Viewallprocesses, padding=(5, 5)).grid(row=1,
+                                                                                                          column=3)
+        tk.Entry(modifygamewindow, width=20, font=('微软雅黑', 12), textvariable=process).grid(row=1, column=2)
+
+        tk.Label(modifygamewindow, text='设置游戏备注：', font=('微软雅黑', 12)).grid(row=2, column=1)
+        tk.Entry(modifygamewindow, width=20, font=('微软雅黑', 12), textvariable=notes).grid(row=2, column=2)
+
+        tk.Label(modifygamewindow, text='设置游戏存档目录：', font=('微软雅黑', 12)).grid(row=3, column=1)
+        tk.Entry(modifygamewindow, width=70, font=('微软雅黑', 12), textvariable=Archivedirectory).grid(row=3, column=2)
+        ttk.Button(modifygamewindow, text='更改目录', command=run, padding=(5, 5)).grid(row=3, column=3)
+
+        tk.Label(modifygamewindow, text='输入游戏APPID(可选，不输入则无法进入流程模式)：', font=('微软雅黑', 12)).grid(row=4,
+                                                                                                                  column=1)
+        tk.Entry(modifygamewindow, width=10, font=('微软雅黑', 12), textvariable=appid).grid(row=4, column=2)
+
+        ttk.Button(modifygamewindow, text='确认修改', command=run2, padding=(10, 5)).grid(row=5, column=1)
+    show_keys_from_config(config,handle_selected_key)
 
 # 运行游戏监控
 def monitor():
     config = load_config()
     def handle_selected_key(selected_key):
-        """处理选中的键的回调函数"""
-        # print(f"处理选中的键: {selected_key}")
         def main():
             but1.config(text='游戏正在运行中',state=tk.DISABLED)
-            monitor_process(config[selected_key][0])
+            monitor_process_if(config[selected_key][0])
             but1.config(text='正在备份存档', state=tk.DISABLED)
             nameFile = compress_folder(config[selected_key][1], cache_dir)
             updateadd_config_value(selected_key, nameFile)
@@ -295,11 +413,53 @@ def monitor():
 def RestoreArchive():
     config = load_config()
     def handle_selected_key(selected_key):
-        print(config[selected_key][1]+'\\')
-        print(unzip_dir+'\\'+config[selected_key][2])
-        extract_zip(unzip_dir+'\\'+config[selected_key][2],config[selected_key][1]+'\\')
+        extract_zip(unzip_dir+'\\'+config[selected_key][3],config[selected_key][1]+'\\')
         messagebox.showinfo('完毕','成功')
     show_keys_from_config(config, handle_selected_key)
+
+# 流程模式
+def Process():
+    config = load_config()
+
+    #启动
+    def start(selected_key):
+        but2.config(text='正在覆盖存档', state=tk.DISABLED)
+        extract_zip(unzip_dir+'\\'+config[selected_key][3],config[selected_key][1]+'\\')
+        os.startfile(f"steam://rungameid/{config[selected_key][2]}")
+        monitor(selected_key)
+    # 监控
+    def monitor(selected_key):
+        def main():
+            but2.config(text='游戏正在运行中',state=tk.DISABLED)
+            monitor_process_if(config[selected_key][0])
+            but2.config(text='正在备份存档', state=tk.DISABLED)
+            nameFile = compress_folder(config[selected_key][1], cache_dir)
+            updateadd_config_value(selected_key, nameFile)
+            but2.config(text='启动监控', state=tk.NORMAL)
+            messagebox.showinfo('完毕','游戏存档已备份')
+        thread1 = threading.Thread(target=main)
+        thread1.start()
+
+    show_keys_from_config(config, start)
+
+# 打开存档目录
+def Openarchivedirectory():
+    os.startfile(unzip_dir)
+
+# 导出所有存档
+def allexport():
+    File = select_directory('选择导出的位置')
+    FileX = File + '\\'+'导出'
+    print(File)
+    compress_folder(unzip_dir,FileX)
+    messagebox.showinfo('成功','导出完毕')
+    os.startfile(File)
+
+# 导入存档
+def importsave():
+    File = select_zip_file('选择导出的文件')
+    extract_zip(File,unzip_dir)
+    messagebox.showinfo('成功', '导入完毕')
 #---主菜单---
 global mainmenu
 mainmenu = tk.Tk()
@@ -315,11 +475,17 @@ button_padding = (10, 5)
 mainmenu.protocol('WM_DELETE_WINDOW', WindowEvent)
 
 ttk.Button(mainmenu, text='添加游戏监控', command=Addgame, padding=button_padding).place(relx=0.2, y=40, anchor='center')
-ttk.Button(mainmenu, text='修改游戏监控', command='', padding=button_padding).place(relx=0.4, y=40, anchor='center')
+ttk.Button(mainmenu, text='修改游戏监控', command=modifygame, padding=button_padding).place(relx=0.4, y=40, anchor='center')
 ttk.Button(mainmenu, text='删除游戏监控', command='', padding=button_padding).place(relx=0.6, y=40, anchor='center')
+ttk.Button(mainmenu, text='导出所有存档', command=allexport, padding=button_padding).place(relx=0.2, y=90, anchor='center')
+ttk.Button(mainmenu, text='导入存档', command=importsave, padding=button_padding).place(relx=0.4, y=90, anchor='center')
+ttk.Button(mainmenu, text='打开存档目录', command=Openarchivedirectory, padding=button_padding).place(relx=0.6, y=90, anchor='center')
+
 but1 = ttk.Button(mainmenu, text='启动监控', command=monitor, padding=(50, 5))
-but1.place(relx=0.5, y=90, anchor='center')
-ttk.Button(mainmenu, text='恢复存档', command=RestoreArchive, padding=(50, 5)).place(relx=0.5, y=140, anchor='center')
+but1.place(relx=0.5, y=140, anchor='center')
+ttk.Button(mainmenu, text='恢复存档', command=RestoreArchive, padding=(50, 5)).place(relx=0.5, y=180, anchor='center')
+but2 = ttk.Button(mainmenu, text='流程模式', command=Process, padding=(50, 5))
+but2.place(relx=0.5, y=220, anchor='center')
 
 # 开启窗口
 mainmenu.mainloop()
