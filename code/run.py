@@ -460,6 +460,14 @@ def importsave():
     File = select_zip_file('选择导出的文件')
     extract_zip(File,unzip_dir)
     messagebox.showinfo('成功', '导入完毕')
+
+# 删除游戏监控
+def removegame():
+    config = load_config()
+    def run(selected_key):
+        delete_key_from_json(selected_key)
+        messagebox.showinfo('成功','删除成功')
+    show_keys_from_config(config, run)
 #---主菜单---
 create_default_config()
 global mainmenu
@@ -477,7 +485,7 @@ mainmenu.protocol('WM_DELETE_WINDOW', WindowEvent)
 
 ttk.Button(mainmenu, text='添加游戏监控', command=Addgame, padding=button_padding).place(relx=0.2, y=40, anchor='center')
 ttk.Button(mainmenu, text='修改游戏监控', command=modifygame, padding=button_padding).place(relx=0.4, y=40, anchor='center')
-ttk.Button(mainmenu, text='删除游戏监控', command='', padding=button_padding).place(relx=0.6, y=40, anchor='center')
+ttk.Button(mainmenu, text='删除游戏监控', command=removegame, padding=button_padding).place(relx=0.6, y=40, anchor='center')
 ttk.Button(mainmenu, text='导出所有存档', command=allexport, padding=button_padding).place(relx=0.2, y=90, anchor='center')
 ttk.Button(mainmenu, text='导入存档', command=importsave, padding=button_padding).place(relx=0.4, y=90, anchor='center')
 ttk.Button(mainmenu, text='打开存档目录', command=Openarchivedirectory, padding=button_padding).place(relx=0.6, y=90, anchor='center')
