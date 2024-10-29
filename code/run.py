@@ -147,7 +147,8 @@ def delete_key_from_json(key,file_path="data/config.json"):
     :return: 删除成功则返回 True；若键不存在则返回 False
     """
     if not os.path.exists(file_path):
-        print(f"文件 '{file_path}' 不存在。")
+        messagebox.showerror('错误',f"文件 '{file_path}' 不存在。")
+        messagebox.showinfo('温馨提示','如果是新添加的游戏，请先使用监控模式运行游戏后退出等待存档保存完毕后再使用')
         return False
 
     # 读取 JSON 文件
@@ -160,11 +161,11 @@ def delete_key_from_json(key,file_path="data/config.json"):
         # 写回 JSON 文件
         with open(file_path, 'w', encoding='utf-8') as file:
             json.dump(data, file, indent=4, ensure_ascii=False)
-        print(f"已成功删除键 '{key}'。")
+        # print(f"已成功删除键 '{key}'。")
         return True
     else:
-        print(f"键 '{key}' 不存在于文件中。")
-        return False
+        messagebox.showerror('致命错误',f"键 '{key}' 不存在于文件中。")
+        sys.exit(1)
 
 # 判断式监控
 def monitor_process_if(process_name):
@@ -450,7 +451,6 @@ def Openarchivedirectory():
 def allexport():
     File = select_directory('选择导出的位置')
     FileX = File + '\\'+'导出'
-    print(File)
     compress_folder(unzip_dir,FileX)
     messagebox.showinfo('成功','导出完毕')
     os.startfile(File)
