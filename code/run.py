@@ -461,6 +461,7 @@ def importsave():
     extract_zip(File,unzip_dir)
     messagebox.showinfo('成功', '导入完毕')
 #---主菜单---
+create_default_config()
 global mainmenu
 mainmenu = tk.Tk()
 mainmenu.geometry("550x300")  # 设置窗口大小
