@@ -5,6 +5,7 @@ import subprocess
 import sys
 import threading
 import time
+import webbrowser
 from tkinter import ttk, filedialog, messagebox,Listbox, Button
 
 import psutil
@@ -12,7 +13,7 @@ import tkinter as tk
 
 # 初始化环境变量
 # 游戏存档位置
-cache_dir = os.path.join(os.environ['USERPROFILE'], "AppData", "Local", "Gamesavebackup", "Cache")
+cache_dir = os.path.join(os.environ['USERPROFILE'], "AppData", "Local", "Gamesavebackup", "null")
 unzip_dir = os.path.join(os.environ['USERPROFILE'], "AppData", "Local", "Gamesavebackup")
 
 #---方法库---
@@ -320,8 +321,12 @@ def Addgame():
         messagebox.showinfo('成功','添加成功')
     # 运行查看所有进程
     def Viewallprocesses():
-        subprocess.Popen(["查看所有进程.exe"])
-        # subprocess.Popen(['python',"process.py"])
+        try:
+            subprocess.Popen(["查看所有进程.exe"])
+            # subprocess.Popen(['python',"process.py"])
+        except FileNotFoundError as e:
+            messagebox.showerror('错误','您没有下载查看进程助手,稍后将为您跳转下载，放到当前目录即可')
+            webbrowser.open('https://github.com/yxsj245/Gamesaveassistant/releases')
 
     # 主菜单
     tk.Label(Addgamewindow, text='输入游戏进程：', font=('微软雅黑', 12)).grid(row=1, column=1)
@@ -371,8 +376,12 @@ def modifygame():
 
         # 运行查看所有进程
         def Viewallprocesses():
-            subprocess.Popen(["查看所有进程.exe"])
-            # subprocess.Popen(['python', "process.py"])
+            try:
+                subprocess.Popen(["查看所有进程.exe"])
+                # subprocess.Popen(['python',"process.py"])
+            except FileNotFoundError as e:
+                messagebox.showerror('错误', '您没有下载查看进程助手,稍后将为您跳转下载，放到当前目录即可')
+                webbrowser.open('https://github.com/yxsj245/Gamesaveassistant/releases')
 
         # 主菜单
         tk.Label(modifygamewindow, text='输入游戏进程：', font=('微软雅黑', 12)).grid(row=1, column=1)
@@ -414,8 +423,11 @@ def monitor():
 def RestoreArchive():
     config = load_config()
     def handle_selected_key(selected_key):
-        extract_zip(unzip_dir+'\\'+config[selected_key][3],config[selected_key][1]+'\\')
-        messagebox.showinfo('完毕','成功')
+        try:
+            extract_zip(unzip_dir+'\\'+config[selected_key][3],config[selected_key][1]+'\\')
+            messagebox.showinfo('完毕','成功')
+        except Exception as e:
+            messagebox.showerror('错误',f'是否首先执行了存档备份？{e}')
     show_keys_from_config(config, handle_selected_key)
 
 # 流程模式
@@ -424,10 +436,17 @@ def Process():
 
     #启动
     def start(selected_key):
-        but2.config(text='正在覆盖存档', state=tk.DISABLED)
-        extract_zip(unzip_dir+'\\'+config[selected_key][3],config[selected_key][1]+'\\')
-        os.startfile(f"steam://rungameid/{config[selected_key][2]}")
-        monitor(selected_key)
+        if not config[selected_key][2]:
+            messagebox.showwarning('警告','该游戏APPID为空，无法使用此模式，请运行游戏监控模式或者补充APPID信息')
+        else:
+            but2.config(text='正在覆盖存档', state=tk.DISABLED)
+            try:
+                extract_zip(unzip_dir + '\\' + config[selected_key][3], config[selected_key][1] + '\\')
+                os.startfile(f"steam://rungameid/{config[selected_key][2]}")
+                monitor(selected_key)
+            except Exception as e:
+                but2.config(text='流程模式', state=tk.NORMAL)
+                messagebox.showerror('错误', f'是否首先执行了存档备份？{e}')
     # 监控
     def monitor(selected_key):
         def main():
@@ -436,7 +455,7 @@ def Process():
             but2.config(text='正在备份存档', state=tk.DISABLED)
             nameFile = compress_folder(config[selected_key][1], cache_dir)
             updateadd_config_value(selected_key, nameFile)
-            but2.config(text='启动监控', state=tk.NORMAL)
+            but2.config(text='流程模式', state=tk.NORMAL)
             messagebox.showinfo('完毕','游戏存档已备份')
         thread1 = threading.Thread(target=main)
         thread1.start()
@@ -468,13 +487,36 @@ def removegame():
         delete_key_from_json(selected_key)
         messagebox.showinfo('成功','删除成功')
     show_keys_from_config(config, run)
+
+# 手动备份存档
+def handmovement():
+    config = load_config()
+    def handle_selected_key(selected_key):
+        def main():
+            but3.config(text='正在备份存档', state=tk.DISABLED)
+            nameFile = compress_folder(config[selected_key][1], cache_dir)
+            updateadd_config_value(selected_key, nameFile)
+            but3.config(text='手动备份存档', state=tk.NORMAL)
+            messagebox.showinfo('完毕','游戏存档已备份')
+        thread1 = threading.Thread(target=main)
+        thread1.start()
+
+    show_keys_from_config(config, handle_selected_key)
+
+# 前往GitHub查看源码
+def githubweb():
+    webbrowser.open("https://github.com/yxsj245/Gamesaveassistant")
+
+# 前往Gitee查看源码
+def giteeweb():
+    webbrowser.open("https://gitee.com/xiao-zhu245/Gamesaveassistant")
 #---主菜单---
 create_default_config()
 global mainmenu
 mainmenu = tk.Tk()
 mainmenu.geometry("550x300")  # 设置窗口大小
-# mainmenu.minsize(450,382)
-mainmenu.title('游戏存档自动备份助手1.0')
+mainmenu.minsize(550,300)
+mainmenu.title('游戏存档自动备份助手1.3')
 
 def WindowEvent():
     os._exit(0)
@@ -486,6 +528,8 @@ mainmenu.protocol('WM_DELETE_WINDOW', WindowEvent)
 ttk.Button(mainmenu, text='添加游戏监控', command=Addgame, padding=button_padding).place(relx=0.2, y=40, anchor='center')
 ttk.Button(mainmenu, text='修改游戏监控', command=modifygame, padding=button_padding).place(relx=0.4, y=40, anchor='center')
 ttk.Button(mainmenu, text='删除游戏监控', command=removegame, padding=button_padding).place(relx=0.6, y=40, anchor='center')
+but3 = ttk.Button(mainmenu, text='手动备份存档', command=handmovement, padding=button_padding)
+but3.place(relx=0.8, y=40, anchor='center')
 ttk.Button(mainmenu, text='导出所有存档', command=allexport, padding=button_padding).place(relx=0.2, y=90, anchor='center')
 ttk.Button(mainmenu, text='导入存档', command=importsave, padding=button_padding).place(relx=0.4, y=90, anchor='center')
 ttk.Button(mainmenu, text='打开存档目录', command=Openarchivedirectory, padding=button_padding).place(relx=0.6, y=90, anchor='center')
@@ -495,6 +539,9 @@ but1.place(relx=0.5, y=140, anchor='center')
 ttk.Button(mainmenu, text='恢复存档', command=RestoreArchive, padding=(50, 5)).place(relx=0.5, y=180, anchor='center')
 but2 = ttk.Button(mainmenu, text='流程模式', command=Process, padding=(50, 5))
 but2.place(relx=0.5, y=220, anchor='center')
+
+ttk.Button(mainmenu, text='前往GitHub查看源码', command=githubweb, padding=(50, 5)).place(relx=0.3, y=260, anchor='center')
+ttk.Button(mainmenu, text='前往GitHub查看源码', command=giteeweb, padding=(50, 5)).place(relx=0.7, y=260, anchor='center')
 
 # 开启窗口
 mainmenu.mainloop()
