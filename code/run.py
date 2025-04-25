@@ -10,11 +10,23 @@ from tkinter import ttk, filedialog, messagebox,Listbox, Button
 
 import psutil
 import tkinter as tk
+from dotenv import load_dotenv, set_key
+
+# 加载.env文件
+def load_env():
+    env_path = ".env"
+    if not os.path.exists(env_path):
+        # 创建默认.env文件
+        default_backup_dir = os.path.join(os.environ['USERPROFILE'], "AppData", "Local", "Gamesavebackup")
+        with open(env_path, 'w') as f:
+            f.write(f"BACKUP_DIR={default_backup_dir}")
+    load_dotenv(env_path)
+    return os.getenv('BACKUP_DIR', os.path.join(os.environ['USERPROFILE'], "AppData", "Local", "Gamesavebackup"))
 
 # 初始化环境变量
-# 游戏存档位置
-cache_dir = os.path.join(os.environ['USERPROFILE'], "AppData", "Local", "Gamesavebackup", "null")
-unzip_dir = os.path.join(os.environ['USERPROFILE'], "AppData", "Local", "Gamesavebackup")
+backup_dir = load_env()
+cache_dir = os.path.join(backup_dir, "null")
+unzip_dir = backup_dir
 
 #---方法库---
 # 压缩文件夹
@@ -28,14 +40,30 @@ def compress_folder(source_folder, output_zip):
     if not os.path.isdir(source_folder):
         raise ValueError("指定的路径不是一个有效的文件夹")
 
-    # 获取文件夹名称作为压缩包名称
+    # 获取游戏备注作为文件夹名
+    config = load_config()
+    game_name = None
+    for name, info in config.items():
+        if info[1] == source_folder:  # 比较存档路径
+            game_name = name
+            break
+    
+    if not game_name:
+        game_name = os.path.basename(source_folder)
+    
+    # 创建游戏专属文件夹
+    game_dir = os.path.join(os.path.dirname(output_zip), game_name)
+    if not os.path.exists(game_dir):
+        os.makedirs(game_dir)
+    
+    # 使用文件夹名称作为文件名
     folder_name = os.path.basename(source_folder)
-    output_zip = os.path.join(os.path.dirname(output_zip), folder_name)
-
-    # 创建zip压缩包，使用shutil的make_archive方法
+    output_zip = os.path.join(game_dir, folder_name)
+    
+    # 创建zip压缩包
     shutil.make_archive(output_zip, 'zip', source_folder)
     print(f"文件夹已成功压缩至 {output_zip}.zip")
-    return folder_name+'.zip'
+    return os.path.join(game_name, folder_name + '.zip')
     # compress_folder("./测试压缩/TSMpackagemanager", "./测试压缩/解压目录")
 # 解压
 def extract_zip(zip_path, extract_to=None):
@@ -322,11 +350,12 @@ def Addgame():
     # 运行查看所有进程
     def Viewallprocesses():
         try:
-            subprocess.Popen(["查看所有进程.exe"])
-            # subprocess.Popen(['python',"process.py"])
+            print(11111111)
+            # subprocess.Popen(["./Viewallprocesses.exe"])
+            subprocess.Popen(['python',"code/process.py"])
         except FileNotFoundError as e:
             messagebox.showerror('错误','您没有下载查看进程助手,稍后将为您跳转下载，放到当前目录即可')
-            webbrowser.open('https://github.com/yxsj245/Gamesaveassistant/releases')
+            # webbrowser.open('https://github.com/yxsj245/Gamesaveassistant/releases')
 
     # 主菜单
     tk.Label(Addgamewindow, text='输入游戏进程：', font=('微软雅黑', 12)).grid(row=1, column=1)
@@ -403,31 +432,165 @@ def modifygame():
         ttk.Button(modifygamewindow, text='确认修改', command=run2, padding=(10, 5)).grid(row=5, column=1)
     show_keys_from_config(config,handle_selected_key)
 
+# 全局变量用于跟踪正在监控的游戏
+monitoring_games = {}
+monitoring_enabled = True  # 全局监控开关
+auto_restart_timer = None  # 自动重启定时器
+
+# 设置备份路径
+def set_backup_path():
+    global backup_dir, cache_dir, unzip_dir
+    # 创建设置窗口
+    path_window = tk.Toplevel()
+    path_window.title('设置备份路径')
+    path_window.geometry("500x150")
+    
+    # 创建路径输入框
+    path_var = tk.StringVar()
+    path_var.set(backup_dir)
+    path_entry = tk.Entry(path_window, width=50, textvariable=path_var)
+    path_entry.pack(pady=20)
+    
+    # 创建选择目录按钮
+    def select_path():
+        selected_path = filedialog.askdirectory(title="选择备份目录")
+        if selected_path:
+            path_var.set(selected_path)
+    
+    select_button = ttk.Button(path_window, text="选择目录", command=select_path)
+    select_button.pack(pady=10)
+    
+    # 创建确认按钮
+    def confirm():
+        global backup_dir, cache_dir, unzip_dir
+        new_path = path_var.get()
+        if new_path and os.path.isdir(new_path):
+            backup_dir = new_path
+            cache_dir = os.path.join(backup_dir, "null")
+            unzip_dir = backup_dir
+            # 更新.env文件
+            set_key('.env', 'BACKUP_DIR', new_path)
+            messagebox.showinfo('成功', '备份路径设置成功')
+            path_window.destroy()
+        else:
+            messagebox.showerror('错误', '请选择有效的目录')
+    
+    confirm_button = ttk.Button(path_window, text="确认", command=confirm)
+    confirm_button.pack(pady=10)
+
+# 自动恢复监控
+def auto_restart_monitoring():
+    global auto_restart_timer, monitoring_enabled
+    if not monitoring_enabled:  # 如果监控是关闭状态
+        monitoring_enabled = True  # 先设置监控状态为开启
+        start_all_monitoring()
+        but1.config(text='停止监控', state=tk.NORMAL)
+    auto_restart_timer = None  # 清除定时器
+
+# 持续监控函数
+def continuous_monitor(process_name, game_name, archive_path):
+    """
+    持续监控指定进程,等待游戏启动,并在游戏关闭时自动备份存档
+    
+    :param process_name: 进程名称
+    :param game_name: 游戏名称
+    :param archive_path: 存档路径
+    """
+    while monitoring_enabled:  # 检查全局监控开关
+        # 等待游戏启动
+        while monitoring_enabled:  # 检查全局监控开关
+            process_found = False
+            for process in psutil.process_iter(['name']):
+                if process.info['name'] == process_name:
+                    process_found = True
+                    break
+            
+            if process_found:
+                break
+                
+            time.sleep(5)  # 每5秒检查一次
+        
+        # 监控游戏运行状态
+        while monitoring_enabled:  # 检查全局监控开关
+            process_found = False
+            for process in psutil.process_iter(['name']):
+                if process.info['name'] == process_name:
+                    process_found = True
+                    break
+            
+            if not process_found:
+                # 进程已关闭,执行备份
+                try:
+                    nameFile = compress_folder(archive_path, cache_dir)
+                    updateadd_config_value(game_name, nameFile)
+                except Exception as e:
+                    messagebox.showerror('备份错误', f'自动备份失败: {str(e)}')
+                break
+                
+            time.sleep(5)  # 每5秒检查一次
+
+# 启动所有游戏的监控
+def start_all_monitoring():
+    global monitoring_enabled
+    monitoring_enabled = True
+    config = load_config()
+    for game_name in config:
+        if game_name not in monitoring_games:
+            monitoring_games[game_name] = True
+            thread = threading.Thread(
+                target=continuous_monitor,
+                args=(config[game_name][0], game_name, config[game_name][1])
+            )
+            thread.daemon = True  # 设置为守护线程
+            thread.start()
+
+# 停止所有游戏的监控
+def stop_all_monitoring():
+    global monitoring_enabled, auto_restart_timer
+    monitoring_enabled = False
+    monitoring_games.clear()
+    but1.config(text='停止监控', state=tk.NORMAL)
+    
+    # 设置60秒后自动恢复监控
+    if auto_restart_timer is None:  # 确保只有一个定时器
+        auto_restart_timer = mainmenu.after(60000, auto_restart_monitoring)  # 60000ms = 60s
+
 # 运行游戏监控
 def monitor():
-    config = load_config()
-    def handle_selected_key(selected_key):
-        def main():
-            but1.config(text='游戏正在运行中',state=tk.DISABLED)
-            monitor_process_if(config[selected_key][0])
-            but1.config(text='正在备份存档', state=tk.DISABLED)
-            nameFile = compress_folder(config[selected_key][1], cache_dir)
-            updateadd_config_value(selected_key, nameFile)
-            but1.config(text='启动监控', state=tk.NORMAL)
-            messagebox.showinfo('完毕','游戏存档已备份')
-        thread1 = threading.Thread(target=main)
-        thread1.start()
-    show_keys_from_config(config,handle_selected_key)
+    global monitoring_enabled, auto_restart_timer
+    if monitoring_enabled:
+        # 如果监控是开启状态,则停止监控
+        stop_all_monitoring()
+        but1.config(text='启动监控', state=tk.NORMAL)  # 更新按钮文本为"启动监控"
+    else:
+        # 如果监控是关闭状态,则启动监控
+        # 如果存在自动重启定时器,取消它
+        if auto_restart_timer is not None:
+            mainmenu.after_cancel(auto_restart_timer)
+            auto_restart_timer = None
+        monitoring_enabled = True  # 先设置监控状态为开启
+        start_all_monitoring()
+        but1.config(text='停止监控', state=tk.NORMAL)  # 更新按钮文本为"停止监控"
 
 # 恢复存档
 def RestoreArchive():
     config = load_config()
     def handle_selected_key(selected_key):
         try:
-            extract_zip(unzip_dir+'\\'+config[selected_key][3],config[selected_key][1]+'\\')
-            messagebox.showinfo('完毕','成功')
+            # 获取游戏存档路径
+            game_save_path = config[selected_key][1]
+            # 构建存档文件路径
+            save_file = os.path.join(backup_dir, selected_key, os.path.basename(game_save_path) + '.zip')
+            
+            if not os.path.exists(save_file):
+                messagebox.showerror('错误', f'未找到存档文件: {save_file}')
+                return
+                
+            # 解压存档到游戏存档目录
+            extract_zip(save_file, game_save_path)
+            messagebox.showinfo('完毕','恢复成功')
         except Exception as e:
-            messagebox.showerror('错误',f'是否首先执行了存档备份？{e}')
+            messagebox.showerror('错误',f'恢复存档失败: {str(e)}')
     show_keys_from_config(config, handle_selected_key)
 
 # 流程模式
@@ -533,6 +696,7 @@ but3.place(relx=0.8, y=40, anchor='center')
 ttk.Button(mainmenu, text='导出所有存档', command=allexport, padding=button_padding).place(relx=0.2, y=90, anchor='center')
 ttk.Button(mainmenu, text='导入存档', command=importsave, padding=button_padding).place(relx=0.4, y=90, anchor='center')
 ttk.Button(mainmenu, text='打开存档目录', command=Openarchivedirectory, padding=button_padding).place(relx=0.6, y=90, anchor='center')
+ttk.Button(mainmenu, text='设置备份路径', command=set_backup_path, padding=button_padding).place(relx=0.8, y=90, anchor='center')
 
 but1 = ttk.Button(mainmenu, text='启动监控', command=monitor, padding=(50, 5))
 but1.place(relx=0.5, y=140, anchor='center')
@@ -542,6 +706,11 @@ but2.place(relx=0.5, y=220, anchor='center')
 
 ttk.Button(mainmenu, text='前往GitHub查看源码', command=githubweb, padding=(50, 5)).place(relx=0.3, y=260, anchor='center')
 ttk.Button(mainmenu, text='前往GitHub查看源码', command=giteeweb, padding=(50, 5)).place(relx=0.7, y=260, anchor='center')
+
+# 启动自动监控
+monitoring_enabled = True  # 确保监控状态为开启
+start_all_monitoring()
+but1.config(text='停止监控', state=tk.NORMAL)  # 设置按钮初始状态
 
 # 开启窗口
 mainmenu.mainloop()
