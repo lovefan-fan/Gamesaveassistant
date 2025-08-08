@@ -1,0 +1,35 @@
+# 环境配置文件
+.env
+
+# 用户配置文件
+data/config.json
+
+# PyInstaller构建文件
+build/
+dist/
+*.spec
+
+# IDE配置文件
+.idea/
+.vscode/
+
+# Python缓存文件
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# 临时文件
+*.tmp
+*.temp
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 备份文件
+*.bak
+*.backup 
