@@ -7,6 +7,7 @@ import threading
 import time
 import webbrowser
 from tkinter import ttk, filedialog, messagebox,Listbox, Button
+from tkinter.scrolledtext import ScrolledText
 
 import psutil
 import tkinter as tk
@@ -27,6 +28,30 @@ def load_env():
 backup_dir = load_env()
 cache_dir = os.path.join(backup_dir, "null")
 unzip_dir = backup_dir
+
+# 日志记录（线程安全）
+log_text = None  # 将在主界面初始化
+def log(message: str):
+    """将消息写入日志文本框，并输出到控制台。线程安全。"""
+    try:
+        print(message)
+    except Exception:
+        pass
+    try:
+        if log_text is None:
+            return
+        timestamp = time.strftime('%H:%M:%S')
+        def _append():
+            try:
+                log_text.config(state=tk.NORMAL)
+                log_text.insert(tk.END, f"[{timestamp}] {message}\n")
+                log_text.see(tk.END)
+            finally:
+                log_text.config(state=tk.DISABLED)
+        # 使用主线程更新UI
+        mainmenu.after(0, _append)
+    except Exception:
+        pass
 
 # 可移植路径工具
 
@@ -117,7 +142,7 @@ def compress_folder(source_folder, output_zip):
     
     # 创建zip压缩包
     shutil.make_archive(output_zip, 'zip', source_folder)
-    print(f"文件夹已成功压缩至 {output_zip}.zip")
+    log(f"文件夹已成功压缩至 {output_zip}.zip")
     # 统一返回为反斜杠相对路径（例如： 魔法\\Magicraft.zip）
     relative_zip = os.path.join(game_name, folder_name + '.zip').replace('/', '\\')
     return relative_zip
@@ -139,7 +164,7 @@ def extract_zip(zip_path, extract_to=None):
 
     # 解压文件
     shutil.unpack_archive(zip_path, extract_to)
-    print(f"文件已成功解压至 {extract_to}")
+    log(f"文件已成功解压至 {extract_to}")
     # extract_zip("./测试压缩/解压目录.zip", "./测试压缩/")
 
 # 加载配置文件
@@ -376,10 +401,11 @@ def Addgame():
         value = [process.get(), portable_path, appid.get(), ""]
         update_config_value(notes.get(), value)
         messagebox.showinfo('成功','添加成功')
+        log(f"已添加监控: {notes.get()} | 进程={process.get()} | 存档目录={Archivedirectory.get()}")
     # 运行查看所有进程
     def Viewallprocesses():
         try:
-            print(11111111)
+            log('打开进程查看工具')
             # subprocess.Popen(["./Viewallprocesses.exe"])
             subprocess.Popen(['python',"code/process.py"])
         except FileNotFoundError as e:
@@ -436,6 +462,7 @@ def modifygame():
             if selected_key != notes.get():
                 delete_key_from_json(selected_key)
             messagebox.showinfo('成功', '修改成功')
+            log(f"已修改监控: {selected_key} -> {notes.get()} | 进程={process.get()} | 存档目录={Archivedirectory.get()}")
 
         # 运行查看所有进程
         def Viewallprocesses():
@@ -505,6 +532,7 @@ def set_backup_path():
             # 更新.env文件
             set_key('.env', 'BACKUP_DIR', new_path)
             messagebox.showinfo('成功', '备份路径设置成功')
+            log(f"备份路径设置为: {new_path}")
             path_window.destroy()
         else:
             messagebox.showerror('错误', '请选择有效的目录')
@@ -557,7 +585,7 @@ def continuous_monitor(process_name, game_name, archive_path):
                 try:
                     resolved_dir = resolve_portable_path(archive_path)
                     if not os.path.isdir(resolved_dir):
-                        print(f"自动备份跳过：存档目录不存在: {resolved_dir}")
+                        log(f"自动备份跳过：存档目录不存在: {resolved_dir}")
                         break
                     nameFile = compress_folder(resolved_dir, cache_dir)
                     # 更新配置文件,只保存最新的存档文件名
@@ -569,9 +597,9 @@ def continuous_monitor(process_name, game_name, archive_path):
                             game_config.append("")
                         game_config[3] = nameFile  # 更新存档文件名
                         update_config_value(game_name, game_config)
-                        print(f"自动备份成功: {game_name} -> {nameFile}")
+                        log(f"自动备份成功: {game_name} -> {nameFile}")
                 except Exception as e:
-                    print(f"自动备份失败 {game_name}: {str(e)}")
+                    log(f"自动备份失败 {game_name}: {str(e)}")
                 break
                 
             time.sleep(5)  # 每5秒检查一次
@@ -590,6 +618,10 @@ def start_all_monitoring():
             )
             thread.daemon = True  # 设置为守护线程
             thread.start()
+            try:
+                log(f"开始监控: {game_name} | 进程={config[game_name][0]}")
+            except Exception:
+                pass
 
 # 停止所有游戏的监控
 def stop_all_monitoring():
@@ -597,6 +629,7 @@ def stop_all_monitoring():
     monitoring_enabled = False
     monitoring_games.clear()
     but1.config(text='停止监控', state=tk.NORMAL)
+    log('已停止所有监控')
     
     # 设置60秒后自动恢复监控
     if auto_restart_timer is None:  # 确保只有一个定时器
@@ -636,56 +669,14 @@ def RestoreArchive():
             # 解压存档到游戏存档目录
             extract_zip(save_file, game_save_path)
             messagebox.showinfo('完毕','恢复成功')
+            log(f"恢复成功: {selected_key} -> {save_file}")
         except Exception as e:
             messagebox.showerror('错误',f'恢复存档失败: {str(e)}')
+            log(f"恢复失败: {selected_key} | {str(e)}")
     show_keys_from_config(config, handle_selected_key)
 
-# 流程模式
 def Process():
-    config = load_config()
-
-    #启动
-    def start(selected_key):
-        if not config[selected_key][2]:
-            messagebox.showwarning('警告','该游戏APPID为空，无法使用此模式，请运行游戏监控模式或者补充APPID信息')
-        else:
-            but2.config(text='正在覆盖存档', state=tk.DISABLED)
-            try:
-                extract_to = resolve_portable_path(config[selected_key][1])
-                extract_zip(unzip_dir + '\\' + config[selected_key][3], extract_to)
-                os.startfile(f"steam://rungameid/{config[selected_key][2]}")
-                monitor(selected_key)
-            except Exception as e:
-                but2.config(text='流程模式', state=tk.NORMAL)
-                messagebox.showerror('错误', f'是否首先执行了存档备份？{e}')
-    # 监控
-    def monitor(selected_key):
-        def main():
-            try:
-                but2.config(text='游戏正在运行中',state=tk.DISABLED)
-                monitor_process_if(config[selected_key][0])
-                but2.config(text='正在备份存档', state=tk.DISABLED)
-                archive_dir = resolve_portable_path(config[selected_key][1])
-                if not os.path.isdir(archive_dir):
-                    raise ValueError(f"存档目录不存在: {archive_dir}")
-                nameFile = compress_folder(archive_dir, cache_dir)
-                # 正确更新配置的第4项（索引3）为最新存档相对路径
-                latest_config = load_config()
-                if selected_key in latest_config:
-                    game_config = latest_config[selected_key]
-                    while len(game_config) < 4:
-                        game_config.append("")
-                    game_config[3] = nameFile
-                    update_config_value(selected_key, game_config)
-                but2.config(text='流程模式', state=tk.NORMAL)
-                messagebox.showinfo('完毕','游戏存档已备份')
-            except Exception as e:
-                but2.config(text='流程模式', state=tk.NORMAL)
-                messagebox.showerror('错误', f'备份失败: {str(e)}')
-        thread1 = threading.Thread(target=main)
-        thread1.start()
-
-    show_keys_from_config(config, start)
+    messagebox.showinfo('提示', '流程模式已暂时禁用')
 
 # 打开存档目录
 def Openarchivedirectory():
@@ -697,6 +688,7 @@ def allexport():
     FileX = File + '\\'+'导出'
     compress_folder(unzip_dir,FileX)
     messagebox.showinfo('成功','导出完毕')
+    log(f"所有存档已导出至: {FileX}.zip")
     os.startfile(File)
 
 # 导入存档
@@ -711,6 +703,7 @@ def removegame():
     def run(selected_key):
         delete_key_from_json(selected_key)
         messagebox.showinfo('成功','删除成功')
+        log(f"已删除监控: {selected_key}")
     show_keys_from_config(config, run)
 
 # 手动备份存档
@@ -733,8 +726,10 @@ def handmovement():
                     game_config[3] = nameFile
                     update_config_value(selected_key, game_config)
                 messagebox.showinfo('完毕','游戏存档已备份')
+                log(f"手动备份成功: {selected_key} -> {nameFile}")
             except Exception as e:
                 messagebox.showerror('错误', f'备份失败: {str(e)}')
+                log(f"手动备份失败: {selected_key} | {str(e)}")
             finally:
                 but3.config(text='手动备份存档', state=tk.NORMAL)
         thread1 = threading.Thread(target=main)
@@ -753,9 +748,9 @@ def giteeweb():
 create_default_config()
 global mainmenu
 mainmenu = tk.Tk()
-mainmenu.geometry("550x300")  # 设置窗口大小
-mainmenu.minsize(550,300)
-mainmenu.title('游戏存档自动备份助手1.3')
+mainmenu.geometry("550x520")  # 设置窗口大小（增加高度以显示日志）
+mainmenu.minsize(550,520)
+mainmenu.title('游戏存档自动备份助手1.4')
 
 def WindowEvent():
     os._exit(0)
@@ -777,11 +772,17 @@ ttk.Button(mainmenu, text='设置备份路径', command=set_backup_path, padding
 but1 = ttk.Button(mainmenu, text='启动监控', command=monitor, padding=(50, 5))
 but1.place(relx=0.5, y=140, anchor='center')
 ttk.Button(mainmenu, text='恢复存档', command=RestoreArchive, padding=(50, 5)).place(relx=0.5, y=180, anchor='center')
-but2 = ttk.Button(mainmenu, text='流程模式', command=Process, padding=(50, 5))
-but2.place(relx=0.5, y=220, anchor='center')
+# 注释掉流程模式按钮
+# but2 = ttk.Button(mainmenu, text='流程模式', command=Process, padding=(50, 5))
+# but2.place(relx=0.5, y=220, anchor='center')
 
-ttk.Button(mainmenu, text='前往GitHub查看源码', command=githubweb, padding=(50, 5)).place(relx=0.3, y=260, anchor='center')
-ttk.Button(mainmenu, text='前往GitHub查看源码', command=giteeweb, padding=(50, 5)).place(relx=0.7, y=260, anchor='center')
+ttk.Button(mainmenu, text='前往GitHub查看原作者源码', command=githubweb, padding=(50, 5)).place(relx=0.3, y=260, anchor='center')
+ttk.Button(mainmenu, text='前往GitHub查看原作者源码', command=giteeweb, padding=(50, 5)).place(relx=0.7, y=260, anchor='center')
+
+# 日志输出区域
+log_text = ScrolledText(mainmenu, wrap=tk.WORD, state=tk.DISABLED)
+log_text.place(x=10, y=300, width=530, height=200)
+log('应用已启动，日志输出到此处')
 
 # 启动自动监控
 monitoring_enabled = True  # 确保监控状态为开启
