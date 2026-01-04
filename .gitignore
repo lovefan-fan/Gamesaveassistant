@@ -1,8 +1,12 @@
-# 环境配置文件
+# 环境配置文件（包含密码，绝不能提交）
 .env
 
 # 用户配置文件
 data/config.json
+data/network_config.json
+
+# 服务器数据目录（Docker生成）
+server_data/
 
 # PyInstaller构建文件
 build/
@@ -32,4 +36,13 @@ Thumbs.db
 
 # 备份文件
 *.bak
-*.backup 
+*.backup
+
+# 虚拟环境
+venv/
+ENV/
+env/
+
+# 测试文件
+test_*
+*_test.py

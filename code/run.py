@@ -6,6 +6,9 @@ import sys
 import threading
 import time
 import webbrowser
+import uuid
+import hashlib
+import requests
 from tkinter import ttk, filedialog, messagebox,Listbox, Button
 from tkinter.scrolledtext import ScrolledText
 
@@ -28,6 +31,216 @@ def load_env():
 backup_dir = load_env()
 cache_dir = os.path.join(backup_dir, "null")
 unzip_dir = backup_dir
+
+#=================== 网络同步配置模块 ===================#
+
+def get_machine_id():
+    """生成基于机器MAC地址的唯一标识"""
+    try:
+        mac = uuid.getnode()
+        return hashlib.sha256(str(mac).encode()).hexdigest()[:16]
+    except:
+        return hashlib.sha256(str(time.time()).encode()).hexdigest()[:16]
+
+def get_user_config_path():
+    """获取用户配置目录"""
+    config_dir = os.path.join(backup_dir, "user_config")
+    if not os.path.exists(config_dir):
+        os.makedirs(config_dir)
+    return config_dir
+
+class NetworkConfigManager:
+    """网络配置管理器"""
+
+    def __init__(self):
+        self.config_file = "data/network_config.json"
+        self.sync_status = {"last_sync": None, "status": "未同步", "conflicts": []}
+        self.load_network_config()
+
+    def load_network_config(self):
+        """加载网络配置"""
+        if os.path.exists(self.config_file):
+            with open(self.config_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {
+            "enabled": False,
+            "server_url": "",
+            "user_id": "",
+            "machine_id": get_machine_id(),
+            "sync_interval": 300,  # 5分钟自动同步
+            "last_version": 0
+        }
+
+    def save_network_config(self, config):
+        """保存网络配置"""
+        with open(self.config_file, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=4, ensure_ascii=False)
+
+    def get_server_url(self):
+        """获取服务器URL"""
+        config = self.load_network_config()
+        return config.get("server_url", "").rstrip('/')
+
+    def get_user_id(self):
+        """获取用户ID"""
+        config = self.load_network_config()
+        return config.get("user_id", "")
+
+    def get_machine_id(self):
+        """获取机器ID"""
+        config = self.load_network_config()
+        return config.get("machine_id", "")
+
+    def is_enabled(self):
+        """检查网络同步是否启用"""
+        config = self.load_network_config()
+        return config.get("enabled", False)
+
+    def test_connection(self, server_url):
+        """测试服务器连接"""
+        try:
+            response = requests.get(f"{server_url.rstrip('/')}/api/health", timeout=5)
+            return response.status_code == 200
+        except:
+            return False
+
+    def sync_pull(self, log_callback=None):
+        """从服务器拉取配置"""
+        if not self.is_enabled():
+            return False, "网络同步未启用"
+
+        config = self.load_network_config()
+        server_url = config["server_url"]
+        user_id = config["user_id"]
+        machine_id = config["machine_id"]
+        local_version = config.get("last_version", 0)
+
+        try:
+            # 调用同步接口
+            response = requests.post(
+                f"{server_url.rstrip('/')}/api/config/sync/{user_id}",
+                json={
+                    "local_version": local_version,
+                    "machine_id": machine_id
+                },
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("updated"):
+                    remote_config = result["config"]
+                    new_version = result["version"]
+
+                    # 保存远程配置到本地
+                    with open("data/config.json", 'w', encoding='utf-8') as f:
+                        json.dump(remote_config, f, indent=4, ensure_ascii=False)
+
+                    # 更新版本号
+                    config["last_version"] = new_version
+                    self.save_network_config(config)
+
+                    msg = f"同步成功：已更新到版本 {new_version}"
+                    if log_callback:
+                        log_callback(msg)
+                    return True, msg
+                else:
+                    msg = "配置已是最新版本"
+                    if log_callback:
+                        log_callback(msg)
+                    return True, msg
+            else:
+                msg = f"服务器错误: HTTP {response.status_code}"
+                if log_callback:
+                    log_callback(msg)
+                return False, msg
+
+        except requests.exceptions.ConnectionError:
+            msg = "无法连接到服务器"
+            if log_callback:
+                log_callback(msg)
+            return False, msg
+        except Exception as e:
+            msg = f"同步失败: {str(e)}"
+            if log_callback:
+                log_callback(msg)
+            return False, msg
+
+    def sync_push(self, log_callback=None):
+        """推送本地配置到服务器"""
+        if not self.is_enabled():
+            return False, "网络同步未启用"
+
+        config = self.load_network_config()
+        server_url = config["server_url"]
+        user_id = config["user_id"]
+        machine_id = config["machine_id"]
+        local_version = config.get("last_version", 0)
+
+        # 读取本地配置
+        local_config = load_config()
+        if not local_config:
+            return False, "本地配置为空"
+
+        try:
+            response = requests.post(
+                f"{server_url.rstrip('/')}/api/config/push/{user_id}",
+                json={
+                    "config": local_config,
+                    "local_version": local_version,
+                    "machine_id": machine_id
+                },
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                new_version = result.get("new_version", local_version)
+
+                # 更新版本号
+                config["last_version"] = new_version
+                self.save_network_config(config)
+
+                msg = f"推送成功：新版本 {new_version}"
+                if log_callback:
+                    log_callback(msg)
+                return True, msg
+            else:
+                msg = f"服务器错误: HTTP {response.status_code}"
+                if log_callback:
+                    log_callback(msg)
+                return False, msg
+
+        except requests.exceptions.ConnectionError:
+            msg = "无法连接到服务器"
+            if log_callback:
+                log_callback(msg)
+            return False, msg
+        except Exception as e:
+            msg = f"推送失败: {str(e)}"
+            if log_callback:
+                log_callback(msg)
+            return False, msg
+
+    def sync_two_way(self, log_callback=None):
+        """双向同步：先推送，再拉取"""
+        if not self.is_enabled():
+            return False, "网络同步未启用"
+
+        # 先推送
+        push_success, push_msg = self.sync_push(log_callback)
+        if not push_success:
+            return False, f"推送失败: {push_msg}"
+
+        # 再拉取
+        pull_success, pull_msg = self.sync_pull(log_callback)
+        if not pull_success:
+            return False, f"拉取失败: {pull_msg}"
+
+        return True, "双向同步完成"
+
+# 全局网络配置管理器实例
+network_manager = NetworkConfigManager()
 
 # 日志记录（线程安全）
 log_text = None  # 将在主界面初始化
@@ -376,6 +589,163 @@ def show_keys_from_config(config, callback):
     key_window.transient(mainmenu)  # 设置为根窗口的临时窗口
     key_window.grab_set()  # 使窗口成为模态窗口
 
+# 网络设置窗口
+def network_settings():
+    """网络同步设置窗口"""
+    settings_window = tk.Toplevel()
+    settings_window.title('网络同步设置')
+    settings_window.geometry("500x350")
+
+    # 加载当前配置
+    config = network_manager.load_network_config()
+
+    # 变量
+    enabled_var = tk.BooleanVar(value=config.get("enabled", False))
+    server_url_var = tk.StringVar(value=config.get("server_url", ""))
+    user_id_var = tk.StringVar(value=config.get("user_id", ""))
+    machine_id_var = tk.StringVar(value=config.get("machine_id", ""))
+    sync_interval_var = tk.IntVar(value=config.get("sync_interval", 300))
+
+    # 状态显示
+    status_label = tk.Label(settings_window, text="", font=('微软雅黑', 9), fg="blue")
+    status_label.pack(pady=5)
+
+    # 启用开关
+    tk.Checkbutton(settings_window, text="启用网络同步", variable=enabled_var, font=('微软雅黑', 11)).pack(pady=5)
+
+    # 服务器URL
+    tk.Label(settings_window, text="服务器地址 (http://ip:port):", font=('微软雅黑', 10)).pack(pady=(10, 0))
+    server_entry = tk.Entry(settings_window, width=50, textvariable=server_url_var)
+    server_entry.pack(pady=5)
+
+    # 用户ID
+    tk.Label(settings_window, text="用户ID (不同用户用不同ID):", font=('微软雅黑', 10)).pack(pady=(10, 0))
+    user_entry = tk.Entry(settings_window, width=50, textvariable=user_id_var)
+    user_entry.pack(pady=5)
+
+    # 机器ID（只读显示）
+    tk.Label(settings_window, text="本机标识 (自动分配):", font=('微软雅黑', 10)).pack(pady=(10, 0))
+    machine_entry = tk.Entry(settings_window, width=50, textvariable=machine_id_var, state='readonly')
+    machine_entry.pack(pady=5)
+
+    # 同步间隔
+    tk.Label(settings_window, text="自动同步间隔(秒):", font=('微软雅黑', 10)).pack(pady=(10, 0))
+    interval_entry = tk.Entry(settings_window, width=20, textvariable=sync_interval_var)
+    interval_entry.pack(pady=5)
+
+    def test_connection():
+        """测试连接"""
+        server_url = server_url_var.get().strip()
+        if not server_url:
+            status_label.config(text="请输入服务器地址", fg="red")
+            return
+
+        status_label.config(text="正在测试连接...", fg="orange")
+        settings_window.update()
+
+        if network_manager.test_connection(server_url):
+            status_label.config(text="✓ 连接成功", fg="green")
+        else:
+            status_label.config(text="✗ 连接失败，请检查服务器", fg="red")
+
+    def save_config():
+        """保存配置"""
+        new_config = {
+            "enabled": enabled_var.get(),
+            "server_url": server_url_var.get().strip(),
+            "user_id": user_id_var.get().strip(),
+            "machine_id": machine_id_var.get(),
+            "sync_interval": sync_interval_var.get(),
+            "last_version": config.get("last_version", 0)
+        }
+
+        if new_config["enabled"] and (not new_config["server_url"] or not new_config["user_id"]):
+            messagebox.showerror("错误", "启用网络同步时，服务器地址和用户ID不能为空")
+            return
+
+        network_manager.save_network_config(new_config)
+        messagebox.showinfo("成功", "网络配置已保存")
+        log(f"网络配置已更新: 启用={new_config['enabled']}, 用户={new_config['user_id']}")
+        settings_window.destroy()
+
+    # 按钮区域
+    btn_frame = tk.Frame(settings_window)
+    btn_frame.pack(pady=15)
+
+    ttk.Button(btn_frame, text="测试连接", command=test_connection, padding=(10, 5)).pack(side=tk.LEFT, padx=5)
+    ttk.Button(btn_frame, text="保存配置", command=save_config, padding=(10, 5)).pack(side=tk.LEFT, padx=5)
+
+# 同步管理窗口
+def sync_manager():
+    """同步管理窗口"""
+    sync_window = tk.Toplevel()
+    sync_window.title('配置同步管理')
+    sync_window.geometry("500x300")
+
+    # 状态显示区域
+    status_frame = tk.Frame(sync_window)
+    status_frame.pack(pady=10, fill=tk.X, padx=20)
+
+    status_text = tk.Text(status_frame, height=8, width=60, font=('微软雅黑', 9))
+    status_text.pack()
+
+    def update_status(msg):
+        """更新状态显示"""
+        status_text.insert(tk.END, f"[{time.strftime('%H:%M:%S')}] {msg}\n")
+        status_text.see(tk.END)
+
+    def check_network_enabled():
+        """检查网络是否启用"""
+        if not network_manager.is_enabled():
+            messagebox.showwarning("警告", "网络同步未启用，请先在【网络设置】中启用并配置")
+            return False
+        return True
+
+    def do_pull():
+        """执行拉取"""
+        if not check_network_enabled():
+            return
+        update_status("开始拉取配置...")
+        threading.Thread(target=lambda: network_manager.sync_pull(update_status), daemon=True).start()
+
+    def do_push():
+        """执行推送"""
+        if not check_network_enabled():
+            return
+        update_status("开始推送配置...")
+        threading.Thread(target=lambda: network_manager.sync_push(update_status), daemon=True).start()
+
+    def do_two_way():
+        """执行双向同步"""
+        if not check_network_enabled():
+            return
+        update_status("开始双向同步...")
+        threading.Thread(target=lambda: network_manager.sync_two_way(update_status), daemon=True).start()
+
+    def show_server_info():
+        """显示服务器信息"""
+        config = network_manager.load_network_config()
+        info = f"""当前配置:
+- 服务器: {config.get('server_url', '未设置')}
+- 用户ID: {config.get('user_id', '未设置')}
+- 机器ID: {config.get('machine_id', '未生成')}
+- 同步状态: {'已启用' if config.get('enabled') else '未启用'}
+- 本地版本: {config.get('last_version', 0)}"""
+        messagebox.showinfo("服务器信息", info)
+
+    # 按钮区域
+    btn_frame = tk.Frame(sync_window)
+    btn_frame.pack(pady=15)
+
+    btn_width = 15
+    ttk.Button(btn_frame, text="拉取配置(下载)", command=do_pull, width=btn_width).grid(row=0, column=0, padx=5, pady=5)
+    ttk.Button(btn_frame, text="推送配置(上传)", command=do_push, width=btn_width).grid(row=0, column=1, padx=5, pady=5)
+    ttk.Button(btn_frame, text="双向同步", command=do_two_way, width=btn_width).grid(row=1, column=0, padx=5, pady=5)
+    ttk.Button(btn_frame, text="查看服务器信息", command=show_server_info, width=btn_width).grid(row=1, column=1, padx=5, pady=5)
+
+    update_status("准备就绪，请选择同步操作")
+    update_status("提示：双向同步会先上传本地配置，再下载远程配置")
+
 #---运行方法库---
 # 添加游戏监控
 def Addgame():
@@ -406,8 +776,8 @@ def Addgame():
     def Viewallprocesses():
         try:
             log('打开进程查看工具')
-            # subprocess.Popen(["./Viewallprocesses.exe"])
-            subprocess.Popen(['python',"code/process.py"])
+            subprocess.Popen(["./Viewallprocesses.exe"])
+            # subprocess.Popen(['python',"code/process.py"])
         except FileNotFoundError as e:
             messagebox.showerror('错误','您没有下载查看进程助手,稍后将为您跳转下载，放到当前目录即可')
             # webbrowser.open('https://github.com/yxsj245/Gamesaveassistant/releases')
@@ -769,20 +1139,25 @@ ttk.Button(mainmenu, text='导入存档', command=importsave, padding=button_pad
 ttk.Button(mainmenu, text='打开存档目录', command=Openarchivedirectory, padding=button_padding).place(relx=0.6, y=90, anchor='center')
 ttk.Button(mainmenu, text='设置备份路径', command=set_backup_path, padding=button_padding).place(relx=0.8, y=90, anchor='center')
 
+# 网络同步相关按钮
+ttk.Button(mainmenu, text='网络设置', command=network_settings, padding=button_padding).place(relx=0.2, y=130, anchor='center')
+ttk.Button(mainmenu, text='同步管理', command=sync_manager, padding=button_padding).place(relx=0.4, y=130, anchor='center')
+
 but1 = ttk.Button(mainmenu, text='启动监控', command=monitor, padding=(50, 5))
-but1.place(relx=0.5, y=140, anchor='center')
-ttk.Button(mainmenu, text='恢复存档', command=RestoreArchive, padding=(50, 5)).place(relx=0.5, y=180, anchor='center')
+but1.place(relx=0.5, y=170, anchor='center')
+ttk.Button(mainmenu, text='恢复存档', command=RestoreArchive, padding=(50, 5)).place(relx=0.5, y=210, anchor='center')
 # 注释掉流程模式按钮
 # but2 = ttk.Button(mainmenu, text='流程模式', command=Process, padding=(50, 5))
 # but2.place(relx=0.5, y=220, anchor='center')
 
 ttk.Button(mainmenu, text='前往GitHub查看原作者源码', command=githubweb, padding=(50, 5)).place(relx=0.3, y=260, anchor='center')
-ttk.Button(mainmenu, text='前往GitHub查看原作者源码', command=giteeweb, padding=(50, 5)).place(relx=0.7, y=260, anchor='center')
+ttk.Button(mainmenu, text='前往Gitee查看源码', command=giteeweb, padding=(50, 5)).place(relx=0.7, y=260, anchor='center')
 
 # 日志输出区域
 log_text = ScrolledText(mainmenu, wrap=tk.WORD, state=tk.DISABLED)
 log_text.place(x=10, y=300, width=530, height=200)
 log('应用已启动，日志输出到此处')
+log('提示：如需网络同步，请点击【网络设置】配置服务器和用户ID')
 
 # 启动自动监控
 monitoring_enabled = True  # 确保监控状态为开启

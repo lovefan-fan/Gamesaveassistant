@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  gamesave-server:
+    # 构建镜像
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # 容器名称
+    container_name: gamesave-sync-server
+
+    # 端口映射
+    ports:
+      - "5000:5000"
+
+    # 环境变量
+    environment:
+      # 管理密码（必填，建议修改）
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      # Flask环境
+      - FLASK_ENV=production
+
+    # 数据持久化
+    volumes:
+      - ./server_data:/app/server_data
+
+    # 重启策略
+    restart: unless-stopped
+
+    # 资源限制（可选）
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
