@@ -24,25 +24,31 @@ def install_requirements():
 def build_exe():
     """使用PyInstaller打包exe"""
     print("开始打包exe文件...")
-    
+
     # PyInstaller命令参数
     cmd = [
         "pyinstaller",
         "--onefile",  # 打包成单个exe文件
         "--windowed",  # 不显示控制台窗口
         "--name=游戏存档自动备份助手",  # 指定exe文件名
-        "--icon=icon.ico",  # 图标文件（如果有的话）
         "--add-data=data;data",  # 包含data目录
+        # 隐藏导入（网络同步功能需要）
         "--hidden-import=tkinter",
         "--hidden-import=psutil",
-        "--hidden-import=dotenv",
+        "--hidden-import=requests",
+        "--hidden-import=python-dotenv",
+        "--hidden-import=uuid",
+        "--hidden-import=hashlib",
+        "--hidden-import=json",
+        "--hidden-import=os",
+        "--hidden-import=datetime",
         "code/run.py"
     ]
-    
-    # 如果没有图标文件，移除图标参数
-    if not os.path.exists("icon.ico"):
-        cmd = [arg for arg in cmd if not arg.startswith("--icon")]
-    
+
+    # 如果有图标文件，添加图标参数
+    if os.path.exists("icon.ico"):
+        cmd.insert(3, "--icon=icon.ico")
+
     try:
         subprocess.check_call(cmd)
         print("exe文件打包完成")
