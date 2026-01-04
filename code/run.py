@@ -594,7 +594,7 @@ def network_settings():
     """网络同步设置窗口"""
     settings_window = tk.Toplevel()
     settings_window.title('网络同步设置')
-    settings_window.geometry("500x350")
+    settings_window.geometry("500x420")  # 增加高度
 
     # 加载当前配置
     config = network_manager.load_network_config()
@@ -670,7 +670,7 @@ def network_settings():
 
     # 按钮区域
     btn_frame = tk.Frame(settings_window)
-    btn_frame.pack(pady=15)
+    btn_frame.pack(pady=20)  # 增加底部间距
 
     ttk.Button(btn_frame, text="测试连接", command=test_connection, padding=(10, 5)).pack(side=tk.LEFT, padx=5)
     ttk.Button(btn_frame, text="保存配置", command=save_config, padding=(10, 5)).pack(side=tk.LEFT, padx=5)
