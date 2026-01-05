@@ -480,7 +480,7 @@ def monitor_process_if(process_name):
         # 若首次检测到进程，则等待 5 秒再重新确认
         if process_found:
             pass
-            # print(f"检测到进程 {process_name}，开始 5 秒监控...")
+            log(f"检测到进程 {process_name}，开始 5 秒监控...")
             time.sleep(5)
 
             # 5 秒后再次确认进程是否还在运行
@@ -491,7 +491,7 @@ def monitor_process_if(process_name):
                     break
 
             if not process_running:
-                # print(f"进程 {process_name} 已结束，退出监控。")
+                log(f"进程 {process_name} 已结束，退出监控。")
                 break
         else:
             time.sleep(1)  # 如果未检测到进程，每秒检查一次
@@ -516,6 +516,58 @@ def list_visible_app_processes():
             continue
 
     return list(set(app_process_list))  # 使用 set 去重
+
+
+# 调试函数：列出所有进程（用于查找准确的进程名）
+def debug_list_all_processes():
+    """
+    列出所有正在运行的 .exe 进程，用于调试查找准确的进程名称
+
+    :return: 所有 .exe 进程的名称列表
+    """
+    all_processes = []
+
+    for proc in psutil.process_iter(['name', 'pid', 'exe']):
+        try:
+            name = proc.info.get('name', '')
+            if name and name.endswith('.exe'):
+                all_processes.append({
+                    'name': name,
+                    'pid': proc.info.get('pid', 0),
+                    'exe': proc.info.get('exe', '')
+                })
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+
+    return all_processes
+
+
+# 调试函数：搜索包含特定关键字的进程
+def debug_search_process(keyword):
+    """
+    搜索包含指定关键字的进程
+
+    :param keyword: 关键字（如 'Palworld'）
+    :return: 匹配的进程列表
+    """
+    matches = []
+
+    for proc in psutil.process_iter(['name', 'pid', 'exe']):
+        try:
+            name = proc.info.get('name', '')
+            exe = proc.info.get('exe', '')
+
+            # 不区分大小写搜索
+            if keyword.lower() in name.lower() or keyword.lower() in exe.lower():
+                matches.append({
+                    'name': name,
+                    'pid': proc.info.get('pid', 0),
+                    'exe': exe
+                })
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+
+    return matches
 
 # 选择目录
 def select_directory(title):
@@ -923,11 +975,13 @@ def auto_restart_monitoring():
 def continuous_monitor(process_name, game_name, archive_path):
     """
     持续监控指定进程,等待游戏启动,并在游戏关闭时自动备份存档
-    
+
     :param process_name: 进程名称
     :param game_name: 游戏名称
     :param archive_path: 存档路径
     """
+    log(f"监控已启动: {game_name} (进程: {process_name})")
+
     while monitoring_enabled:  # 检查全局监控开关
         # 等待游戏启动
         while monitoring_enabled:  # 检查全局监控开关
@@ -936,12 +990,13 @@ def continuous_monitor(process_name, game_name, archive_path):
                 if process.info['name'] == process_name:
                     process_found = True
                     break
-            
+
             if process_found:
+                log(f"检测到进程出现: {process_name} (游戏: {game_name})")
                 break
-                
+
             time.sleep(5)  # 每5秒检查一次
-        
+
         # 监控游戏运行状态
         while monitoring_enabled:  # 检查全局监控开关
             process_found = False
@@ -949,8 +1004,9 @@ def continuous_monitor(process_name, game_name, archive_path):
                 if process.info['name'] == process_name:
                     process_found = True
                     break
-            
+
             if not process_found:
+                log(f"进程已消失: {process_name} (游戏: {game_name})，开始备份...")
                 # 进程已关闭,执行备份
                 try:
                     resolved_dir = resolve_portable_path(archive_path)
@@ -971,7 +1027,7 @@ def continuous_monitor(process_name, game_name, archive_path):
                 except Exception as e:
                     log(f"自动备份失败 {game_name}: {str(e)}")
                 break
-                
+
             time.sleep(5)  # 每5秒检查一次
 
 # 启动所有游戏的监控
