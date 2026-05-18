@@ -31,6 +31,7 @@ def load_env():
 backup_dir = load_env()
 cache_dir = os.path.join(backup_dir, "null")
 unzip_dir = backup_dir
+MAX_RECENT_BACKUPS = 3
 
 #=================== 网络同步配置模块 ===================#
 
@@ -318,7 +319,7 @@ def resolve_portable_path(path_str: str) -> str:
 
 #---方法库---
 # 压缩文件夹
-def compress_folder(source_folder, output_zip):
+def compress_folder(source_folder, output_zip, timestamped=False):
     """
     压缩指定的文件夹为ZIP格式
 
@@ -351,13 +352,22 @@ def compress_folder(source_folder, output_zip):
     
     # 使用文件夹名称作为文件名
     folder_name = os.path.basename(source_folder)
-    output_zip = os.path.join(game_dir, folder_name)
+    archive_name = folder_name
+    if timestamped:
+        archive_name = f"{folder_name}_{time.strftime('%Y%m%d_%H%M%S')}"
+    output_zip = os.path.join(game_dir, archive_name)
+    if timestamped:
+        base_output_zip = output_zip
+        counter = 1
+        while os.path.exists(output_zip + '.zip'):
+            output_zip = f"{base_output_zip}_{counter}"
+            counter += 1
     
     # 创建zip压缩包
     shutil.make_archive(output_zip, 'zip', source_folder)
     log(f"文件夹已成功压缩至 {output_zip}.zip")
     # 统一返回为反斜杠相对路径（例如： 魔法\\Magicraft.zip）
-    relative_zip = os.path.join(game_name, folder_name + '.zip').replace('/', '\\')
+    relative_zip = os.path.join(game_name, os.path.basename(output_zip) + '.zip').replace('/', '\\')
     return relative_zip
     # compress_folder("./测试压缩/TSMpackagemanager", "./测试压缩/解压目录")
 # 解压
@@ -460,6 +470,118 @@ def add_value_to_dict_list(target_dict, key, value):
         target_dict[key].append(value)  # 将值添加到列表中
 
 # 判断式监控
+def get_backup_history(game_config):
+    if len(game_config) < 4:
+        return []
+    history = game_config[3]
+    if isinstance(history, list):
+        return [item for item in history if item]
+    if isinstance(history, str) and history:
+        return [history]
+    return []
+
+def get_backup_abs_path(backup_ref, game_name=None):
+    if os.path.isabs(backup_ref):
+        return backup_ref
+
+    candidates = [os.path.join(backup_dir, backup_ref)]
+    if game_name:
+        ref_dir = os.path.dirname(backup_ref)
+        if not ref_dir:
+            candidates.append(os.path.join(backup_dir, game_name, backup_ref))
+        candidates.append(os.path.join(backup_dir, game_name, os.path.basename(backup_ref)))
+
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return candidate
+    return candidates[0]
+
+def get_available_backups(game_name, game_config):
+    history = get_backup_history(game_config)
+    try:
+        game_save_path = resolve_portable_path(game_config[1])
+        legacy_ref = os.path.join(game_name, os.path.basename(game_save_path) + '.zip').replace('/', '\\')
+        if legacy_ref not in history:
+            history.append(legacy_ref)
+    except Exception:
+        pass
+
+    backups = []
+    seen = set()
+    for backup_ref in history:
+        if backup_ref in seen:
+            continue
+        seen.add(backup_ref)
+        backup_path = get_backup_abs_path(backup_ref, game_name)
+        if os.path.exists(backup_path):
+            backups.append((backup_ref, backup_path))
+    backups.sort(key=lambda item: os.path.getmtime(item[1]), reverse=True)
+    return backups[:MAX_RECENT_BACKUPS]
+
+def format_backup_time(backup_path):
+    try:
+        timestamp = os.path.getmtime(backup_path)
+        return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))
+    except Exception:
+        return '未知时间'
+
+def remember_backup(game_name, name_file):
+    config = load_config()
+    if game_name not in config:
+        return []
+
+    game_config = config[game_name]
+    while len(game_config) < 4:
+        game_config.append("")
+
+    history = [name_file]
+    for backup_ref in get_backup_history(game_config):
+        if backup_ref != name_file:
+            history.append(backup_ref)
+
+    keep_history = history[:MAX_RECENT_BACKUPS]
+    for backup_ref in history[MAX_RECENT_BACKUPS:]:
+        backup_path = get_backup_abs_path(backup_ref, game_name)
+        try:
+            if os.path.exists(backup_path):
+                os.remove(backup_path)
+                log(f"已清理旧存档: {backup_path}")
+        except Exception as e:
+            log(f"清理旧存档失败: {backup_path} | {str(e)}")
+
+    game_config[3] = keep_history
+    update_config_value(game_name, game_config)
+    return keep_history
+
+def show_backups_for_restore(game_name, backups, callback):
+    def on_select():
+        selection = listbox.curselection()
+        if not selection:
+            messagebox.showerror('错误', '请选择要恢复的存档')
+            return
+        callback(backups[selection[0]])
+        backup_window.destroy()
+
+    backup_window = tk.Toplevel()
+    backup_window.title(f"选择要恢复的存档 - {game_name}")
+
+    listbox = Listbox(backup_window, width=80, height=10)
+    listbox.pack(pady=10, padx=10)
+
+    for backup_ref, backup_path in backups:
+        label = f"{os.path.basename(backup_ref)}    {format_backup_time(backup_path)}"
+        listbox.insert(tk.END, label)
+    if backups:
+        listbox.selection_set(0)
+        listbox.activate(0)
+    listbox.bind('<Double-Button-1>', lambda event: on_select())
+
+    select_button = Button(backup_window, text="恢复选中存档", command=on_select)
+    select_button.pack(pady=5)
+
+    backup_window.transient(mainmenu)
+    backup_window.grab_set()
+
 def monitor_process_if(process_name):
     """
     首次检测到指定名称的进程后，进行 5 秒检测。
@@ -1013,7 +1135,7 @@ def continuous_monitor(process_name, game_name, archive_path):
                     if not os.path.isdir(resolved_dir):
                         log(f"自动备份跳过：存档目录不存在: {resolved_dir}")
                         break
-                    nameFile = compress_folder(resolved_dir, cache_dir)
+                    nameFile = compress_folder(resolved_dir, cache_dir, timestamped=True)
                     # 更新配置文件,只保存最新的存档文件名
                     config = load_config()
                     if game_name in config:
@@ -1021,8 +1143,9 @@ def continuous_monitor(process_name, game_name, archive_path):
                         # 确保配置项有足够的元素
                         while len(game_config) < 4:
                             game_config.append("")
-                        game_config[3] = nameFile  # 更新存档文件名
+                        game_config[3] = [nameFile] + [item for item in get_backup_history(game_config) if item != nameFile]
                         update_config_value(game_name, game_config)
+                        remember_backup(game_name, nameFile)
                         log(f"自动备份成功: {game_name} -> {nameFile}")
                 except Exception as e:
                     log(f"自动备份失败 {game_name}: {str(e)}")
@@ -1082,23 +1205,34 @@ def monitor():
 def RestoreArchive():
     config = load_config()
     def handle_selected_key(selected_key):
+        mainmenu.after(0, lambda: choose_backup(selected_key))
+
+    def choose_backup(selected_key):
         try:
-            # 获取游戏存档路径
-            game_save_path = resolve_portable_path(config[selected_key][1])
-            # 构建存档文件路径
-            save_file = os.path.join(backup_dir, selected_key, os.path.basename(game_save_path) + '.zip')
-            
-            if not os.path.exists(save_file):
-                messagebox.showerror('错误', f'未找到存档文件: {save_file}')
+            backups = get_available_backups(selected_key, config[selected_key])
+            if not backups:
+                messagebox.showerror('错误', f'未找到可恢复的存档: {selected_key}')
                 return
-                
-            # 解压存档到游戏存档目录
-            extract_zip(save_file, game_save_path)
-            messagebox.showinfo('完毕','恢复成功')
-            log(f"恢复成功: {selected_key} -> {save_file}")
+            show_backups_for_restore(
+                selected_key,
+                backups,
+                lambda backup: restore_selected_backup(selected_key, backup)
+            )
         except Exception as e:
-            messagebox.showerror('错误',f'恢复存档失败: {str(e)}')
+            messagebox.showerror('错误', f'读取存档列表失败: {str(e)}')
+            log(f"读取存档列表失败: {selected_key} | {str(e)}")
+
+    def restore_selected_backup(selected_key, backup):
+        backup_ref, save_file = backup
+        try:
+            game_save_path = resolve_portable_path(config[selected_key][1])
+            extract_zip(save_file, game_save_path)
+            messagebox.showinfo('完成','恢复成功')
+            log(f"恢复成功: {selected_key} -> {backup_ref}")
+        except Exception as e:
+            messagebox.showerror('错误', f'恢复存档失败: {str(e)}')
             log(f"恢复失败: {selected_key} | {str(e)}")
+
     show_keys_from_config(config, handle_selected_key)
 
 def Process():
@@ -1142,15 +1276,16 @@ def handmovement():
                 archive_dir = resolve_portable_path(config[selected_key][1])
                 if not os.path.isdir(archive_dir):
                     raise ValueError(f"存档目录不存在: {archive_dir}")
-                nameFile = compress_folder(archive_dir, cache_dir)
+                nameFile = compress_folder(archive_dir, cache_dir, timestamped=True)
                 # 正确更新配置的第4项（索引3）为最新存档相对路径
                 latest_config = load_config()
                 if selected_key in latest_config:
                     game_config = latest_config[selected_key]
                     while len(game_config) < 4:
                         game_config.append("")
-                    game_config[3] = nameFile
+                    game_config[3] = [nameFile] + [item for item in get_backup_history(game_config) if item != nameFile]
                     update_config_value(selected_key, game_config)
+                    remember_backup(selected_key, nameFile)
                 messagebox.showinfo('完毕','游戏存档已备份')
                 log(f"手动备份成功: {selected_key} -> {nameFile}")
             except Exception as e:
