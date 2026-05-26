@@ -25,8 +25,8 @@ RUN mkdir -p server_data
 
 # 设置环境变量
 ENV PATH="/opt/venv/bin:$PATH"
-ENV ADMIN_PASSWORD=admin123
 ENV FLASK_ENV=production
+# ADMIN_PASSWORD 必须通过 docker-compose 或 docker run -e 注入，不存在默认值
 
 # 暴露端口
 EXPOSE 5000

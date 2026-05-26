@@ -1,400 +1,77 @@
-# 游戏存档自动备份助手 - 网络同步版
+# 游戏存档自动备份助手
 
-<div align="center">
+一个用于管理游戏存档备份的桌面工具，当前代码已经按职责拆分为备份、配置、网络、进程、界面和通用工具模块，便于继续维护和打包。
 
-![Version](https://img.shields.io/badge/version-1.5-blue)
-![Python](https://img.shields.io/badge/python-3.8%2B-green)
-![License](https://img.shields.io/badge/license-MIT-lightgrey)
-![Docker](https://img.shields.io/badge/docker-supported-blue)
+## 功能简介
 
-**自动备份游戏存档，支持多设备网络同步**
+- 自动监控游戏进程，在退出后执行备份
+- 支持手动备份、恢复和历史记录查看
+- 支持网络同步配置
+- 支持 Windows 打包为独立可执行文件
 
-[快速开始](#-快速开始) • [使用指南](#-使用指南) • [Docker部署](#-docker部署) • [API文档](#-api文档)
+## 运行环境
 
-</div>
+- Python 3.8 及以上
+- Windows
 
----
-
-## 📋 项目简介
-
-本项目是一个游戏存档自动备份工具，支持多设备网络同步。
-
-**核心功能：**
-- ✅ **自动监控**：游戏关闭时自动备份存档
-- ✅ **网络同步**：多台电脑之间同步配置
-- ✅ **多用户支持**：不同用户独立配置
-- ✅ **版本控制**：防止配置冲突
-- ✅ **Docker部署**：一键部署服务器
-
----
-
-## 🚀 快速开始
-
-### 1. 安装依赖
+## 安装依赖
 
 ```bash
-# 客户端依赖
-pip install requests psutil python-dotenv
-
-# 服务器依赖（可选）
-cd server
-pip install flask
+pip install -r requirements.txt
 ```
 
-### 2. 启动服务器
+## 启动方式
 
-**方式A：Docker（推荐）**
+开发环境请直接从新的入口文件启动：
+
 ```bash
-cd server
-cp .env.example .env
-# 编辑 .env 修改 ADMIN_PASSWORD
-docker-compose up -d
+python code/main.py
 ```
 
-**方式B：本地运行**
+## 打包方式
+
+使用项目根目录下的打包脚本：
+
+```bash
+python build_exe.py
+```
+
+打包输出位于 `dist/` 目录，程序运行依赖的 `Viewallprocesses.exe` 会一并复制到该目录。
+
+## 项目结构
+
+```text
+Gamesaveassistant/
+├── code/
+│   ├── main.py                  # 客户端启动入口
+│   ├── backup/                  # 备份、压缩、历史记录、监控逻辑
+│   ├── config/                  # 本地配置与网络配置管理
+│   ├── data/                    # 本地数据文件与日志目录
+│   ├── network/                 # 网络同步客户端
+│   ├── process/                 # 进程检测相关逻辑
+│   ├── ui/                      # 图形界面
+│   ├── utils/                   # 路径、日志等通用工具
+│   └── Viewallprocesses.exe     # 进程查看工具
+├── server/                      # 服务端代码与部署文件
+├── build_exe.py                 # Windows 打包脚本
+├── GamesaveAssistant.spec       # PyInstaller 配置
+├── requirements.txt             # 项目依赖
+└── README.md
+```
+
+## 服务端
+
+如果需要使用同步服务端：
+
 ```bash
 cd server
+pip install -r requirements.txt
 python server.py
 ```
 
-### 3. 配置客户端
+也可以使用 `server/` 目录中的 Docker 相关文件进行部署。
 
-打开游戏存档助手 → 点击 **【网络设置】**：
-- ☑️ 启用网络同步
-- 服务器地址：`http://服务器IP:5000`
-- 用户ID：任意标识（如 `user1`）
-- 点击 **【测试连接】**
-- 点击 **【保存配置】**
+## 说明
 
-### 4. 同步配置
-
-点击 **【同步管理】**：
-- **拉取配置**：从服务器下载配置
-- **推送配置**：上传本地配置到服务器
-- **双向同步**：先上传后下载，自动合并
-
----
-
-## 📖 使用指南
-
-### 基本流程
-
-```
-启动服务器 → 配置客户端 → 添加游戏 → 自动备份 → 同步配置
-```
-
-### 多设备同步示例
-
-**电脑A（家里）：**
-1. 添加游戏"艾尔登法环"
-2. 【网络设置】→ 服务器：`http://192.168.1.100:5000`，用户ID：`user1`
-3. 【同步管理】→【推送配置】
-
-**电脑B（公司）：**
-1. 【网络设置】→ 相同服务器和用户ID
-2. 【同步管理】→【拉取配置】
-3. 成功获取配置
-
-### 多用户场景
-
-| 场景 | 用户ID | 说明 |
-|------|--------|------|
-| 个人多设备 | `user1` | 家里/公司电脑同步 |
-| 团队共享 | `team1` | 多人共享配置 |
-| 多团队 | `teamA`, `teamB` | 独立配置 |
-
----
-
-## 🐳 Docker 部署
-
-### 快速部署
-
-```bash
-cd server
-cp .env.example .env
-# 编辑 .env 设置密码
-docker-compose up -d
-```
-
-### 常用命令
-
-| 命令 | 说明 |
-|------|------|
-| `docker-compose up -d` | 启动服务 |
-| `docker-compose down` | 停止服务 |
-| `docker-compose logs -f` | 查看日志 |
-| `docker-compose restart` | 重启服务 |
-| `docker-compose build --no-cache` | 强制重新构建 |
-
-### 环境变量
-
-编辑 `server/.env`：
-
-```env
-# 管理密码（必填，必须修改）
-ADMIN_PASSWORD=your_secure_password
-```
-
-### 镜像优化说明
-
-**多阶段构建优势：**
-- ✅ **体积小**：最终镜像仅包含运行时依赖（约 80MB）
-- ✅ **安全性高**：构建工具不会出现在最终镜像中
-- ✅ **启动快**：精简的运行环境
-
-**镜像大小对比：**
-- 优化前：~300MB+
-- 优化后：~80MB
-
-### 数据持久化
-
-数据存储在 `server/server_data/` 目录：
-- `config.json` - 配置数据
-- `version.txt` - 版本号
-- `devices.json` - 设备记录
-
-**备份：**
-```bash
-cd server
-tar -czf backup.tar.gz server_data/
-```
-
----
-
-## 🔧 项目结构
-
-```
-Gamesaveassistant/
-├── code/
-│   └── run.py                    # 客户端主程序（已集成网络同步）
-│
-├── server/                       # 服务器端
-│   ├── Dockerfile               # Docker镜像
-│   ├── docker-compose.yml       # Compose配置
-│   ├── server.py                # Flask服务器
-│   ├── requirements.txt         # 依赖
-│   ├── .env.example            # 环境变量模板
-│   ├── 安装依赖.bat            # Windows安装脚本
-│   └── 启动服务器.bat          # Windows启动脚本
-│
-├── data/
-│   ├── config.json              # 游戏配置（自动生成）
-│   └── network_config.json      # 网络配置（自动生成）
-│
-├── server_data/                  # 服务器数据（Docker自动生成）
-│   ├── config.json
-│   ├── version.txt
-│   └── devices.json
-│
-├── README.md                     # 本文档
-├── .env.example                 # 环境变量模板
-└── .gitignore                   # 忽略规则
-```
-
----
-
-## 📝 配置说明
-
-### 客户端配置 (`data/network_config.json`)
-
-```json
-{
-    "enabled": true,
-    "server_url": "http://192.168.1.100:5000",
-    "user_id": "user1",
-    "machine_id": "abc123def456",
-    "sync_interval": 300,
-    "last_version": 124
-}
-```
-
-### 服务器配置 (`server_data/`)
-
-```json
-// config.json
-{
-    "魔法": ["Magicraft.exe", "{USERPROFILE}\\...", "", "魔法\\magicraft.zip"]
-}
-
-// version.txt
-124
-
-// devices.json
-[{
-    "machine_id": "abc123",
-    "last_sync": "2026-01-04 15:30:00",
-    "last_version": 124,
-    "sync_count": 5
-}]
-```
-
----
-
-## 🔑 核心概念
-
-### 版本控制
-
-```
-客户端版本: 123
-服务器版本: 125
-→ 提示：版本过旧，先拉取
-→ 拉取后版本: 125
-→ 修改后推送: 126
-```
-
-### 冲突处理
-
-- **同一游戏被修改**：以最新推送为准
-- **不同游戏**：自动合并
-- **版本落后**：提示先拉取
-
-### 用户识别
-
-- **user_id**：用户自定义，区分不同用户
-- **machine_id**：自动生成，区分不同设备
-
----
-
-## 📚 API 文档
-
-### 健康检查
-```bash
-GET /api/health
-# 响应：{"status":"ok","version":"1.0.0"}
-```
-
-### 同步配置（拉取）
-```bash
-POST /api/config/sync/{user_id}
-Body: {"local_version": 123, "machine_id": "abc123"}
-
-# 响应（有更新）：
-{"updated": true, "config": {...}, "version": 124}
-
-# 响应（无更新）：
-{"updated": false}
-```
-
-### 推送配置
-```bash
-POST /api/config/push/{user_id}
-Body: {"config": {...}, "local_version": 123, "machine_id": "abc123"}
-
-# 响应（成功）：
-{"success": true, "new_version": 124}
-
-# 响应（版本过旧）：
-{"success": false, "message": "本地版本过旧", "server_version": 124}
-```
-
-### 查看设备
-```bash
-GET /api/devices/{user_id}
-# 响应：{"user_id": "user1", "devices": [...]}
-```
-
-### 管理接口（需要密码）
-```bash
-# 查看信息
-GET /api/admin/info?secret=YOUR_PASSWORD
-
-# 清空数据
-POST /api/admin/clear?secret=YOUR_PASSWORD
-```
-
----
-
-## ⚠️ 安全提醒
-
-### 必须修改默认密码！
-
-**服务器部署时，必须修改默认密码！**
-
-```bash
-# 编辑 server/.env
-ADMIN_PASSWORD=Your_Complex_Password_123!@#
-
-# 重启服务
-cd server
-docker-compose down && docker-compose up -d
-```
-
-### 安全建议
-
-1. ✅ 修改默认管理密码
-2. ✅ 仅在内网部署，不要暴露公网
-3. ✅ 使用防火墙限制访问
-4. ✅ 定期备份数据
-5. ✅ 生产环境使用 HTTPS
-
----
-
-## 🐛 常见问题
-
-### Q: 无法连接服务器？
-
-**检查清单：**
-- 服务器是否启动？
-- IP地址是否正确？
-- 端口是否开放？
-- 防火墙是否阻挡？
-
-**测试：**
-```bash
-curl http://服务器IP:5000/api/health
-```
-
-### Q: 版本冲突怎么办？
-
-**解决方法：**
-1. 先点击【拉取配置】
-2. 再进行修改
-3. 最后【推送配置】
-
-### Q: 如何备份数据？
-
-**客户端：** 复制 `data/` 目录
-**服务器：** 复制 `server_data/` 目录
-
-### Q: 如何查看日志？
-
-**服务器：**
-```bash
-docker-compose logs -f
-```
-
-**客户端：** 查看程序日志窗口
-
----
-
-## 🎉 更新日志
-
-### v1.5 - 2026-01-04
-- ✨ 新增网络同步功能
-- ✨ 新增Docker部署支持
-- ✨ 新增多用户支持
-- ✨ 新增版本控制
-- 📝 完善文档
-
-### v1.4 - 原始版本
-- ✅ 自动备份功能
-- ✅ 手动备份/恢复
-- ✅ 游戏监控
-- ✅ 可移植路径
-
----
-
-## 📄 开源协议
-
-MIT License
-
----
-
-## 🤝 联系方式
-
-- GitHub: https://github.com/yxsj245/Gamesaveassistant
-- Gitee: https://gitee.com/xiao-zhu245/Gamesaveassistant
-
----
-
-**祝使用愉快！** 🎮✨
+- 本地配置数据默认位于 `code/data/`
+- 打包后的可执行文件运行时会在 exe 同级目录读取数据文件和 `Viewallprocesses.exe`

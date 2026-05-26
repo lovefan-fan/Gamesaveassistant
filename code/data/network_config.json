@@ -1,0 +1,8 @@
+{
+    "enabled": true,
+    "server_url": "http://v4.jiuchengyixi.top:5000",
+    "user_id": "812858338",
+    "machine_id": "9749b55c61fbee02",
+    "sync_interval": 300,
+    "last_version": 7
+}

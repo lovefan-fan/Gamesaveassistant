@@ -1,8 +1,26 @@
 {
-    "text": [
-        "Xshell.exe",
-        "C:/Users/1/AppData/Roaming/Brotato/6ccc0704fa144d6e87e85f00363cece3",
+    "帕鲁": [
+        "Palworld-Win64-Shipping.exe",
+        "{USERPROFILE}\\appdata\\local\\pal\\saved\\savegames",
         "",
-        "6ccc0704fa144d6e87e85f00363cece3.zip"
+        "帕鲁\\savegames.zip"
+    ],
+    "戴森球计划": [
+        "DSPGAME.exe",
+        "{USERPROFILE}\\documents\\dyson sphere program\\save",
+        "",
+        ""
+    ],
+    "逃离鸭科夫": [
+        "Duckov.exe",
+        "{USERPROFILE}\\appdata\\locallow\\teamsoda\\duckov\\saves",
+        "",
+        ""
+    ],
+    "魔法": [
+        "Magicraft.exe",
+        "{USERPROFILE}\\appdata\\locallow\\bolang\\magicraft",
+        "",
+        "魔法\\magicraft.zip"
     ]
 }

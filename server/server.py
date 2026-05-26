@@ -16,8 +16,10 @@ CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 VERSION_FILE = os.path.join(DATA_DIR, "version.txt")
 DEVICES_FILE = os.path.join(DATA_DIR, "devices.json")
 
-# 从环境变量读取管理密码，默认为 admin123
-ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'admin123')
+# 从环境变量读取管理密码，未设置则拒绝管理操作
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD')
+if not ADMIN_PASSWORD:
+    print("警告: 未设置 ADMIN_PASSWORD 环境变量，管理接口将不可用")
 
 def ensure_data_dir():
     """确保数据目录存在"""
@@ -232,12 +234,18 @@ def get_devices(user_id):
         "devices": devices
     })
 
+def _verify_admin(request) -> bool:
+    """通过 X-Admin-Secret 请求头验证管理员权限。"""
+    if not ADMIN_PASSWORD:
+        return False
+    return request.headers.get('X-Admin-Secret', '') == ADMIN_PASSWORD
+
+
 @app.route('/api/admin/clear', methods=['POST'])
 def admin_clear():
-    """清空所有数据（需要密码）"""
-    secret = request.args.get('secret', '')
-    if secret != ADMIN_PASSWORD:
-        return jsonify({"error": "无权限，密码错误"}), 403
+    """清空所有数据（需要管理密码）"""
+    if not _verify_admin(request):
+        return jsonify({"error": "无权限，密码错误或未配置"}), 403
 
     if os.path.exists(CONFIG_FILE):
         os.remove(CONFIG_FILE)
@@ -250,10 +258,9 @@ def admin_clear():
 
 @app.route('/api/admin/info', methods=['GET'])
 def admin_info():
-    """查看服务器信息（需要密码）"""
-    secret = request.args.get('secret', '')
-    if secret != ADMIN_PASSWORD:
-        return jsonify({"error": "无权限，密码错误"}), 403
+    """查看服务器信息（需要管理密码）"""
+    if not _verify_admin(request):
+        return jsonify({"error": "无权限，密码错误或未配置"}), 403
 
     return jsonify({
         "config": load_config(),
@@ -265,12 +272,14 @@ def admin_info():
 if __name__ == '__main__':
     ensure_data_dir()
 
+    debug_mode = os.getenv('FLASK_ENV', 'production') == 'development'
+
     print("=" * 60)
     print("游戏存档助手 - 同步服务器")
     print("=" * 60)
     print(f"数据目录: {os.path.abspath(DATA_DIR)}")
     print(f"当前版本: {load_version()}")
-    print(f"管理密码: {ADMIN_PASSWORD}")
+    print(f"Debug 模式: {debug_mode}")
     print("")
     print("API 端点:")
     print("  GET  /api/health - 健康检查")
@@ -279,10 +288,10 @@ if __name__ == '__main__':
     print("  GET  /api/config/get/<user_id> - 获取配置")
     print("  GET  /api/devices/<user_id> - 查看设备列表")
     print("")
-    print(f"管理接口（密码: {ADMIN_PASSWORD}）:")
-    print(f"  POST /api/admin/clear?secret={ADMIN_PASSWORD} - 清空数据")
-    print(f"  GET  /api/admin/info?secret={ADMIN_PASSWORD} - 查看信息")
+    print("管理接口（通过 X-Admin-Secret 请求头认证）:")
+    print("  POST /api/admin/clear - 清空数据")
+    print("  GET  /api/admin/info - 查看信息")
     print("=" * 60)
     print("")
 
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=debug_mode)

@@ -16,8 +16,8 @@ services:
 
     # 环境变量
     environment:
-      # 管理密码（必填，建议修改）
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin123}
+      # 管理密码（必填，请修改为强密码）
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?请设置 ADMIN_PASSWORD 环境变量}
       # Flask环境
       - FLASK_ENV=production
 
